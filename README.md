@@ -8,7 +8,7 @@
 ![MLflow](https://img.shields.io/badge/tracking-MLflow-0194E2)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-**Live demo:** <https://volt-uzun.streamlit.app/> · **API docs:** `<demo-url>/docs` · **Dashboard:** `<demo-url>:8501`
+**Live demo:** <https://volt-uzun.streamlit.app/> 
 
 <img width="1188" height="604" alt="image" src="https://github.com/user-attachments/assets/fdd500d6-741c-48e8-a12d-e039b65fb130" />
 <img width="1463" height="633" alt="image" src="https://github.com/user-attachments/assets/eeac9e0c-1b77-46e4-9bc1-489b9859efe7" />
