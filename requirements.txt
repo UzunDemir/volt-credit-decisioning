@@ -1,0 +1,35 @@
+# Core data
+numpy>=1.24,<2.0
+pandas>=2.0
+pyarrow>=14.0
+
+# ML
+scikit-learn>=1.3
+xgboost>=2.0
+statsmodels>=0.14
+
+# Storage / SQL
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9
+
+# Serving
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.5
+pydantic-settings>=2.0
+
+# MLOps
+# mlflow 3.x made models "managed" (models:/m-...): artifacts no longer land
+# in runs, breaking the classic run->registry->serving flow used here.
+mlflow>=2.11,<3
+evidently>=0.4.22
+nltk<3.10  # evidently dep; 3.10 blocks 'regex' import when CWD is on sys.path
+
+# Dashboard
+streamlit>=1.36
+plotly>=5.20
+
+# Dev / QA
+pytest>=8.0
+httpx>=0.27
+ruff>=0.4

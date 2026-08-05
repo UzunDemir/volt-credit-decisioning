@@ -1,0 +1,211 @@
+# Volt Credit Decisioning — end-to-end ML platform demo
+# Usage:
+#   docker compose up --build          # full bootstrap: postgres -> etl -> train -> api + dashboard
+#   docker compose up api dashboard    # after first bootstrap
+#   docker compose run --rm monitor    # simulate production batch + drift report
+name: volt-credit
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-volt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-volt}
+      POSTGRES_DB: ${POSTGRES_DB:-volt_credit}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-volt} -d ${POSTGRES_DB:-volt_credit}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  mlflow:
+    # own image: official mlflow image lacks psycopg2 for the PostgreSQL
+    # backend store; our image ships mlflow + psycopg2 and keeps client/server
+    # versions in lockstep
+    build: .
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri postgresql://${POSTGRES_USER:-volt}:${POSTGRES_PASSWORD:-volt}@postgres:5432/${POSTGRES_DB:-volt_credit}
+      --default-artifact-root /mlartifacts
+      --serve-artifacts
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlartifacts:/mlartifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  etl:
+    build: .
+    command: python -m credit_decision.etl.run_etl
+    environment: &db_env
+      POSTGRES_USER: ${POSTGRES_USER:-volt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-volt}
+      POSTGRES_DB: ${POSTGRES_DB:-volt_credit}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      DATA_SEED: ${DATA_SEED:-42}
+      DATA_N_APPLICATIONS: ${DATA_N_APPLICATIONS:-150000}
+      DATA_N_TXNS_PER_CLIENT_MIN: ${DATA_N_TXNS_PER_CLIENT_MIN:-3}
+      DATA_N_TXNS_PER_CLIENT_MAX: ${DATA_N_TXNS_PER_CLIENT_MAX:-220}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  train:
+    build: .
+    command: python -m credit_decision.model.train
+    environment:
+      <<: *db_env
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    depends_on:
+      etl:
+        condition: service_completed_successfully
+      mlflow:
+        condition: service_started
+    volumes:
+      - mlartifacts:/mlartifacts   # mlflow client writes artifacts locally (artifact_uri is a local path)
+    restart: "no"
+
+  api:
+    build: .
+    command: uvicorn credit_decision.serving.api:app --host 0.0.0.0 --port 8000
+    environment:
+      <<: *db_env
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_APPROVAL_THRESHOLD: ${MODEL_APPROVAL_THRESHOLD:-0.35}
+    ports:
+      - "8000:8000"
+    volumes:
+      - mlartifacts:/mlartifacts   # registry sources point at the server-local path
+    depends_on:
+      train:
+        condition: service_completed_successfully
+      mlflow:
+        condition: service_started
+
+  dashboard:
+    build: .
+    command: streamlit run credit_decision/dashboard/app.py --server.port 8501 --server.address 0.0.0.0
+    environment:
+      <<: *db_env
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      API_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+
+  monitor:
+    build: .
+    command: python -m credit_decision.monitoring.run_monitor
+    environment:
+      <<: *db_env
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    depends_on:
+      - api
+      - mlflow
+    volumes:
+      - mlartifacts:/mlartifacts   # read model + write drift reports
+    restart: "no"
+
+  airflow-init:
+    # one-shot: create metastore DB + migrate schema + admin user
+    # entrypoint is overridden: the stock airflow entrypoint waits for the
+    # metastore DB, which this service itself must create first
+    image: volt-airflow
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    profiles: ["full"]
+    entrypoint: ["/bin/bash", "-c"]
+    # NOTE: compose word-splits a *string* command into argv elements, which
+    # would make bash -c run only "python" (an interactive REPL). A list with
+    # ONE element passes the whole script as a single argument.
+    command:
+      - "python /app/scripts/airflow_init.py && airflow db migrate && (airflow users create --username $${AIRFLOW_ADMIN_USERNAME} --password $${AIRFLOW_ADMIN_PASSWORD} --firstname Volt --lastname Admin --role Admin --email admin@volt.local || true)"
+    environment: &airflow_env
+      <<: *db_env
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-volt}:${POSTGRES_PASSWORD:-volt}@postgres:5432/volt_airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /app/dags
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+      AIRFLOW_ADMIN_USERNAME: admin
+      AIRFLOW_ADMIN_PASSWORD: volt
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  airflow-scheduler:
+    image: volt-airflow
+    profiles: ["full"]
+    command: airflow scheduler
+    environment: *airflow_env
+    volumes:
+      - mlartifacts:/mlartifacts   # LocalExecutor runs tasks here: they load the production model
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  airflow-webserver:
+    image: volt-airflow
+    profiles: ["full"]
+    command: airflow webserver
+    ports:
+      - "8080:8080"
+    environment: *airflow_env
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  grafana:
+    # ML observability: drift/approval dashboards + alerting over PostgreSQL.
+    # Started only with: docker compose --profile full up -d
+    image: grafana/grafana-oss:13.0.2   # pinned: alerting API format differs across majors
+    profiles: ["full"]
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: volt
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/volt_ml.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-storage:/var/lib/grafana   # sqlite + plugins survive restarts
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  grafana-alerts:
+    # one-shot: create the drift alert rule via API after Grafana is up
+    build: .
+    profiles: ["full"]
+    command: python scripts/grafana_alerts.py
+    environment:
+      GRAFANA_URL: http://grafana:3000
+      GRAFANA_ADMIN_USER: admin
+      GRAFANA_ADMIN_PASSWORD: volt
+    depends_on:
+      grafana:
+        condition: service_started
+    restart: "no"
+
+volumes:
+  pgdata:
+  mlartifacts:
+  grafana-storage:

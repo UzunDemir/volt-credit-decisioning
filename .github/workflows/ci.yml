@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check .
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest tests -q
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t volt-credit .
+
+  e2e:
+    # full bootstrap: postgres -> etl -> train -> api. Heavy, run on demand.
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap the platform
+        run: docker compose up --build --abort-on-container-exit
+        timeout-minutes: 30
+      - name: Smoke the API
+        run: |
+          curl -sf http://localhost:8000/health
+          curl -sf http://localhost:8000/model-info
+          APP_ID=$(docker compose exec -T postgres psql -U volt -d volt_credit -tAc \
+            "SELECT application_id FROM applications WHERE applied_at >= '2026-01-01' LIMIT 1")
+          curl -sf -X POST http://localhost:8000/v1/score \
+            -H "Content-Type: application/json" -d "{\"application_id\": $APP_ID}"

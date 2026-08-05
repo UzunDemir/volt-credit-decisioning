@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Data & artifacts (generated)
+data/raw/
+data/processed/
+data/batches/
+mlruns/
+mlartifacts/
+*.parquet
+*.csv
+
+# Env & secrets
+.env
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Docs source
+notes/
+
+# Local command output
+smoke_out.txt
+tests_out.txt
+docker_build_out.txt
+
+# Personal notes (never commit)
+cv.txt
+project.txt
+vacantion.txt
+
+# Build/monitor logs (never commit)
+*_out.txt
+trigger_out.txt
