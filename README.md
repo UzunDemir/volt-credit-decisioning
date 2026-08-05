@@ -10,6 +10,15 @@
 
 **Live demo:** <https://volt-uzun.streamlit.app/> · **API docs:** `<demo-url>/docs` · **Dashboard:** `<demo-url>:8501`
 
+<img width="1188" height="604" alt="image" src="https://github.com/user-attachments/assets/fdd500d6-741c-48e8-a12d-e039b65fb130" />
+<img width="1463" height="633" alt="image" src="https://github.com/user-attachments/assets/eeac9e0c-1b77-46e4-9bc1-489b9859efe7" />
+<img width="1616" height="802" alt="image" src="https://github.com/user-attachments/assets/8067316f-4eec-4138-87da-2436638d7f2a" />
+<img width="1482" height="613" alt="image" src="https://github.com/user-attachments/assets/4a5b070e-fddf-4cf5-9e3c-3c4c8537c9d0" />
+
+
+
+
+
 A production-shaped credit scoring platform for a digital lender:
 **SQL feature engineering → MLflow-tracked training → FastAPI serving →
 Evidently drift monitoring → Streamlit business dashboard → Grafana
