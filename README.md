@@ -7,8 +7,8 @@ feature engineering → MLflow-tracked training → FastAPI serving → Evidentl
 drift monitoring → Streamlit business dashboard → Grafana alerting → Airflow
 orchestration**, all in one `docker compose` stack.
 
-Built as a portfolio project for a **Senior Data Scientist** role in
-fintech: every layer exists to be inspected and questioned in an interview.
+Built as Uzun Demir`s portfolio project for a **Senior Data Scientist** role in
+fintech
 
 <img width="962" height="556" alt="image" src="https://github.com/user-attachments/assets/8543172e-e8aa-4604-99e7-b98089a675ee" />
 
