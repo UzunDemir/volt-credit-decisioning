@@ -12,6 +12,9 @@ fintech
 
 <img width="962" height="556" alt="image" src="https://github.com/user-attachments/assets/8543172e-e8aa-4604-99e7-b98089a675ee" />
 
+<img width="1614" height="962" alt="image" src="https://github.com/user-attachments/assets/529c3a3e-f303-4076-9e19-57e2b6f15db7" />
+
+
 
 ## Quickstart
 
