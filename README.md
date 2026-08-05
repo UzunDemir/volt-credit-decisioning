@@ -87,11 +87,11 @@ curl -X POST http://localhost:8000/v1/score -H "Content-Type: application/json" 
 sql/01_schema.sql + 02_features.sql (v_credit_features)
         │
    ┌────▼────┐   ┌───────▼──────┐   ┌────────▼───────┐
-   │   etl   │──▶│    train     │──▶│      api       │
+   │   etl   │─▶│    train     │──▶│      api       │
    │ seeded  │   │ CV + calib + │   │ FastAPI /v1/*  │
    │  data   │   │ cost thresh  │   │ decisions log  │
    └─────────┘   └──────┬───────┘   └───┬─────┬──────┘
-                        │ MLflow       │     │
+                        │ MLflow        │     │
                  ┌──────▼──────┐  ┌────▼─────▼─────┐
                  │    MLflow   │  │   Streamlit    │
                  │ registry    │  │   dashboard    │
@@ -99,7 +99,7 @@ sql/01_schema.sql + 02_features.sql (v_credit_features)
                  │    alias    │          │
                  └─────────────┘   ┌──────▼────────┐
                                    │    Grafana    │──alert ≥30%──▶ POST /v1/alerts
-                                   │ panels+rule  │                → alert_events (DB)
+                                   │ panels+rule   │                → alert_events (DB)
                                    └───────────────┘
    Airflow (profile full): daily_monitoring · weekly_retrain · monthly_forecast
    Evidently monitor job: reference 2025-H2 vs monthly batches → monitoring_events
