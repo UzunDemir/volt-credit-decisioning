@@ -1,0 +1,12 @@
+# Dashboard-only dependencies for Streamlit Community Cloud.
+# The full platform requirements live in requirements.txt (docker compose);
+# this file keeps the cloud build light and fast.
+streamlit>=1.36
+pandas>=2.0
+numpy>=1.24,<2.0
+plotly>=5.20
+httpx>=0.27
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9
+pydantic>=2.5
+pydantic-settings>=2.0
