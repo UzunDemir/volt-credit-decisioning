@@ -245,7 +245,7 @@
 
 ```promql
 # 1) Error rate > 1% за 5 мин (5xx от общего трафика)
-A: sum(rate(http_requests_total{status="5xx"}[5m])) / sum(rate(http_requests_total[5m]))
+A: (sum(rate(http_requests_total{status="5xx"}[5m])) or vector(0)) / sum(rate(http_requests_total[5m]))
 B: reduce last, C: gt 0.01, for: 5m
 
 # 2) p95 задержки > 300ms за 5 мин
@@ -272,9 +272,10 @@ B: reduce last, C: is_below 0.5, for: 2m
 
 ### Как добавить
 
-Вариант A — **кодом** (рекомендуется, идемпотентно, как drift-правило):
-добавь `RULE`-dict в `scripts/grafana_alerts.py` и вызов `ensure_rule()` —
-скрипт уже умеет: папка `Volt`, контакт-поинт, политика на месте.
+Вариант A — **кодом** (уже сделано, идемпотентно):
+правила «Error rate above 1% (5xx)» и «API p95 latency above 300ms»
+провижинятся `scripts/grafana_alerts.py` (SLO_RULES) вместе с drift-правилом
+— папка `Volt`, контакт-поинт и политика уже на месте.
 
 Вариант B — **UI**: Alerting → Alert rules → New rule: datasource
 VoltPrometheus → PromQL → Reduce (last) → Threshold → `for` → папка Volt →

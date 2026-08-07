@@ -99,11 +99,19 @@ VoltPrometheus datasource is already provisioned (`uid: voltprom`). Use
 The dashboard `volt_ml.json` is PostgreSQL-based (business metrics); SLO
 panels over Prometheus are the documented next step.
 
-### Alerting on SLOs (next step)
+### Alerting on SLOs
 
-The same alert loop as the drift rule: Grafana Alerting → rule with a
-PromQL condition (e.g. `error rate > 1% over 5m`), label `severity=warning`
-→ the `volt-webhook` contact point → `POST /v1/alerts` → `alert_events`.
+Provisioned by `scripts/grafana_alerts.py` alongside the drift rule:
+
+- **Error rate above 1% (5xx)** — 5xx share over 5m > 1%:
+  `(sum(rate(http_requests_total{status="5xx"}[5m])) or vector(0)) / sum(rate(http_requests_total[5m]))`
+- **API p95 latency above 300ms** — p95 over 5m > 300ms:
+  `histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))`
+
+Both use the same loop as the drift rule: `severity=warning` → `volt-webhook`
+→ `POST /v1/alerts` → `alert_events`. The `or vector(0)` guard keeps a quiet
+API (no 5xx series at all) from evaluating to NaN; no traffic at all still
+means NoData, not firing.
 
 ## Configuration layout
 

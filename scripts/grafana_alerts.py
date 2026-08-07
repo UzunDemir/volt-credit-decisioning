@@ -1,10 +1,15 @@
-"""Provision Grafana alerting via API: folder, rule, contact point, policy.
+"""Provision Grafana alerting via API: folder, rules, contact point, policy.
 
 Runs after Grafana starts; idempotent. Reads credentials from env.
 
+Rules provisioned:
+  * "Drift share above 30%" — PostgreSQL (voltdb), business drift alert
+  * "Error rate above 1% (5xx)" — Prometheus (voltprom), API SLO
+  * "API p95 latency above 300ms" — Prometheus (voltprom), API SLO
+
 The webhook target is our own FastAPI (/v1/alerts) which persists every
 notification into ``alert_events`` — a closed-loop demo of ML alerting:
-drift -> Grafana rule -> webhook -> API -> audit table.
+rule -> notification policy -> webhook -> API -> audit table.
 
 Usage:
     python scripts/grafana_alerts.py
@@ -72,6 +77,70 @@ RULE = {
 }
 
 
+
+def _promql_rule(title: str, expr: str, evaluator: dict, for_: str) -> dict:
+    """Build a Grafana alert rule over the VoltPrometheus datasource.
+
+    Shape mirrors RULE: query (A) -> reduce (B) -> threshold (C). Labels
+    carry ``severity=warning`` so the notification policy routes firings to
+    the volt-webhook contact point.
+    """
+    return {
+        "title": title,
+        "folderUID": FOLDER_UID,
+        "ruleGroup": "volt-slo",
+        "condition": "C",
+        "for": for_,
+        "noDataState": "NoData",
+        "execErrState": "Error",
+        "isPaused": False,
+        "labels": {"severity": "warning"},
+        "annotations": {"summary": title},
+        "data": [
+            {
+                "refId": "A",
+                "relativeTimeRange": {"from": 300, "to": 0},
+                "datasourceUid": "voltprom",
+                "queryType": "timeSeriesQuery",
+                "model": {
+                    "refId": "A",
+                    "expr": expr,
+                    "datasource": {"type": "prometheus", "uid": "voltprom"},
+                    "queryType": "timeSeriesQuery",
+                    "instant": True,
+                    "range": False,
+                    "intervalMs": 1000,
+                    "maxDataPoints": 43200,
+                },
+            },
+            {"refId": "B", "datasourceUid": "__expr__", "queryType": "",
+             "model": {"type": "reduce", "expression": "A", "reducer": "last",
+                       "intervalMs": 1000, "maxDataPoints": 43200}},
+            {"refId": "C", "datasourceUid": "__expr__", "queryType": "",
+             "model": {"type": "threshold", "expression": "B",
+                       "conditions": [{"evaluator": evaluator,
+                                       "operator": {"type": "and"},
+                                       "query": {"params": ["C"]}}],
+                       "intervalMs": 1000, "maxDataPoints": 43200}},
+        ],
+    }
+
+
+SLO_RULES = [
+    _promql_rule(
+        "Error rate above 1% (5xx)",
+        '(sum(rate(http_requests_total{status="5xx"}[5m])) or vector(0)) / sum(rate(http_requests_total[5m]))',
+        {"type": "gt", "params": [0.01]},
+        "5m",
+    ),
+    _promql_rule(
+        "API p95 latency above 300ms",
+        "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))",
+        {"type": "gt", "params": [0.3]},
+        "5m",
+    ),
+]
+
 def wait_ready(timeout: float = 120.0) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -96,15 +165,17 @@ def ensure_folder() -> str:
     return FOLDER_UID
 
 
-def ensure_rule() -> None:
+def ensure_rule(rule: dict | None = None) -> None:
+    """Create the rule if it does not exist yet (idempotent by title)."""
+    rule = rule or RULE
     rules = httpx.get(f"{BASE}/api/v1/provisioning/alert-rules", auth=AUTH, timeout=5).json()
-    if any(r.get("title") == RULE["title"] for r in rules):
-        print("alert rule already exists")
+    if any(r.get("title") == rule["title"] for r in rules):
+        print("alert rule already exists:", rule["title"])
         return
-    r = httpx.post(f"{BASE}/api/v1/provisioning/alert-rules", auth=AUTH, timeout=10, json=RULE)
+    r = httpx.post(f"{BASE}/api/v1/provisioning/alert-rules", auth=AUTH, timeout=10, json=rule)
     if r.status_code not in (200, 201):
         raise SystemExit(f"alert rule creation failed: {r.status_code} {r.text}")
-    print("alert rule created:", r.json().get("uid"))
+    print("alert rule created:", r.json().get("uid"), "-", rule["title"])
 
 
 def ensure_contact_point() -> None:
@@ -160,6 +231,8 @@ def main() -> None:
     wait_ready()
     ensure_folder()
     ensure_rule()
+    for slo in SLO_RULES:
+        ensure_rule(slo)
     ensure_contact_point()
     ensure_policy()
     print("Grafana alerting provisioned.")
