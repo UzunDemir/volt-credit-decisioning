@@ -161,3 +161,4 @@ generator for a real ingestion is the documented first step
 - [Observability (Grafana)](docs/observability.md)
 - [Orchestration (Airflow)](docs/orchestration.md)
 - [Interview demo script](docs/demo_script.md)
+- [Verification guide](docs/verification.md) — как проверить весь функционал
