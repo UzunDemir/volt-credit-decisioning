@@ -47,6 +47,8 @@ def _features_for_window(start: str, end: str) -> pd.DataFrame:
 
 
 def _score(features: pd.DataFrame, model) -> pd.DataFrame:
+    if features.empty:
+        return features.copy()
     X = features[FEATURE_COLUMNS]
     out = features.copy()
     out["score"] = model.predict_proba(X)[:, 1]
@@ -117,10 +119,11 @@ def run_monitor(months: int = 7, simulate: bool = False, month: str | None = Non
         for batch in month_range:
             start = f"{batch}-01"
             end = f"{batch}-28"
-            current = _score(_features_for_window(start, end), model)
-            if current.empty:
+            current_feats = _features_for_window(start, end)
+            if current_feats.empty:
                 print(f"  {batch}: no applications — skipping")
                 continue
+            current = _score(current_feats, model)
             print(f"  {batch}: {len(current):,} applications")
 
             score_stats = current["score"].describe(

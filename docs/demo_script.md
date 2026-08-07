@@ -31,8 +31,8 @@ economy turns, and the alert for drift actually calls home."
 - Open MLflow UI: runs, registered model, `production` alias, threshold tag.
 - Say the numbers: "Champion is logistic — on synthetic data the features
   are almost linear, so it beats XGBoost on CV (0.697 vs 0.690). On the
-  holdout test (2025 Q4, never touched during development): ROC-AUC 0.708,
-  ECE 0.005 after calibration, approval rate 78% at the cost-optimal
+  holdout test (2025 Q4, never touched during development): ROC-AUC 0.691,
+  ECE 0.002 after calibration, approval rate 86% at the cost-optimal
   threshold 0.157."
 
 ## 3. Serving (2 min)

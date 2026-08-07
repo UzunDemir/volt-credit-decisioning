@@ -61,11 +61,11 @@ st.caption(
 
 # ------------------------------------------------------------------ KPIs
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Model version", "v8")
+c1.metric("Model version", "v11")
 c2.metric("Threshold", "0.157")
-c3.metric("Test ROC-AUC", "0.708")
-c4.metric("Calibration (ECE)", "0.005")
-c5.metric("Approval rate", "77.8%")
+c3.metric("Test ROC-AUC", "0.691")
+c4.metric("Calibration (ECE)", "0.002")
+c5.metric("Approval rate", "86.2%")
 
 # ------------------------------------------------------------------ monitoring
 st.subheader("Drift & data quality by production month")
