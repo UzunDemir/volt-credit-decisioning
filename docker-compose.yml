@@ -142,6 +142,11 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__DAGS_FOLDER: /app/dags
       AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+      # pinned keys: without them Airflow generates ephemeral ones on
+      # every start, invalidating browser sessions (UI POSTs -> 400 CSRF)
+      # and breaking Fernet-encrypted metastore values on each recreate
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-41bab5fac1c50c6525b64fe342c783cb172500ab2c1907229f0d6fcf09d36710}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-Vb_iQiQ3LdamMfsn9yFkIjKkPwJhNTPw-fsF0sQGHBc=}
       AIRFLOW_ADMIN_USERNAME: admin
       AIRFLOW_ADMIN_PASSWORD: volt
     depends_on:
