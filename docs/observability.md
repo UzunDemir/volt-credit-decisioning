@@ -48,6 +48,63 @@ To add a notification channel (Slack / webhook / email):
 Grafana UI → Alerting → Contact points → add contact point → Notification
 policies → route `severity=warning` to it.
 
+## How to use Prometheus
+
+UI: http://localhost:9090 (Graph / Targets / Status). The `api` target must
+be **UP** — it is scraped every 15s from `api:8000/metrics`.
+
+### Metrics the API exposes
+
+- `http_requests_total{handler, method, status}` — request counter; `status`
+  is the **status class** (2xx / 4xx / 5xx), `handler` is the route
+  (`/health`, `/v1/score`, `/v1/alerts`, `/model-info`, `/metrics`, …)
+- `http_request_duration_seconds{handler}` — latency histogram (few buckets)
+- `http_request_duration_highr_seconds` — latency histogram with many
+  buckets, no handler label (more accurate quantiles)
+- `http_request_size_bytes` / `http_response_size_bytes` — payload sizes
+- `process_*`, `python_*` — process health (CPU, RSS, fds, GC)
+
+### PromQL examples
+
+```promql
+# RPS (общий)
+sum(rate(http_requests_total[5m]))
+
+# RPS по эндпоинтам
+sum by (handler) (rate(http_requests_total[5m]))
+
+# RPS по классу статуса
+sum by (status) (rate(http_requests_total[5m]))
+
+# Error rate (5xx share)
+sum(rate(http_requests_total{status="5xx"}[5m])) / sum(rate(http_requests_total[5m]))
+
+# p95 latency
+histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
+
+# p95 latency по эндпоинтам
+histogram_quantile(0.95, sum by (le, handler) (rate(http_request_duration_seconds_bucket[5m])))
+
+# QPS по скорингу
+sum(rate(http_requests_total{handler="/v1/score"}[5m]))
+```
+
+To see anything move, generate traffic first: `python scripts/api_smoke.py`
+or a loop over `/v1/score` (e.g. 20 requests with curl).
+
+### Grafana panels
+
+VoltPrometheus datasource is already provisioned (`uid: voltprom`). Use
+**Explore** or add a panel with the datasource and paste any PromQL above.
+The dashboard `volt_ml.json` is PostgreSQL-based (business metrics); SLO
+panels over Prometheus are the documented next step.
+
+### Alerting on SLOs (next step)
+
+The same alert loop as the drift rule: Grafana Alerting → rule with a
+PromQL condition (e.g. `error rate > 1% over 5m`), label `severity=warning`
+→ the `volt-webhook` contact point → `POST /v1/alerts` → `alert_events`.
+
 ## Configuration layout
 
 ```
