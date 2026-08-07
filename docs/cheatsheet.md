@@ -230,6 +230,142 @@
   `AIRFLOW__CORE__FERNET_KEY` закреплены в compose (переопределяются через
   `AIRFLOW_SECRET_KEY` / `AIRFLOW_FERNET_KEY`).
 
+## PromQL-алерты (Grafana)
+
+Механика та же, что у drift-правила: правило → label `severity=warning` →
+политика → контакт `volt-webhook` → `POST api:8000/v1/alerts` →
+таблица `alert_events`. Datasource — `VoltPrometheus` (uid `voltprom`).
+
+Структура правила (как в `scripts/grafana_alerts.py`): refId **A** — PromQL
+запрос, **B** — reduce (`last` за интервал), **C** — threshold
+(`gt`/`lt`/`is_below`), плюс `for` (сколько времени условие должно
+держаться до Firing).
+
+### Готовые правила
+
+```promql
+# 1) Error rate > 1% за 5 мин (5xx от общего трафика)
+A: sum(rate(http_requests_total{status="5xx"}[5m])) / sum(rate(http_requests_total[5m]))
+B: reduce last, C: gt 0.01, for: 5m
+
+# 2) p95 задержки > 300ms за 5 мин
+A: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
+B: reduce last, C: gt 0.3, for: 5m
+
+# 3) Скоринг молчит (RPS по /v1/score ~ 0) 15 минут — тихий отказ
+A: sum(rate(http_requests_total{handler="/v1/score"}[10m]))
+B: reduce last, C: lt 0.01, for: 15m
+
+# 4) API недоступен для скрейпа
+A: up{job="api"}
+B: reduce last, C: is_below 0.5, for: 2m
+```
+
+Нюансы:
+- `0/0 = NaN` (нет трафика): правило уйдёт в **NoData**, а не Firing — для
+  error rate это правильно. Хочешь «молчание = алерт» — добавь второе
+  условие на минимальный трафик:
+  `A: sum(rate(http_requests_total[5m])) > 0.1` (например, как C2 с
+  оператором AND).
+- `status` — это класс (`5xx`), не код; `handler` — роут (`/v1/score`).
+- Гистограмма: квантиль считается по `_bucket` + `le`.
+
+### Как добавить
+
+Вариант A — **кодом** (рекомендуется, идемпотентно, как drift-правило):
+добавь `RULE`-dict в `scripts/grafana_alerts.py` и вызов `ensure_rule()` —
+скрипт уже умеет: папка `Volt`, контакт-поинт, политика на месте.
+
+Вариант B — **UI**: Alerting → Alert rules → New rule: datasource
+VoltPrometheus → PromQL → Reduce (last) → Threshold → `for` → папка Volt →
+labels `severity=warning` → сохранить. Доставка — автоматически через
+политику.
+
+### Проверка
+
+```bash
+# после срабатывания — запись в БД:
+docker compose exec postgres psql -U volt -d volt_credit -c   "SELECT title, state, received_at FROM alert_events ORDER BY event_id DESC LIMIT 5"
+# форсировать: временно снизить порог в правиле или нагенерить ошибки:
+curl -s -X POST http://localhost:8000/v1/score-batch -H "Content-Type: application/json"      -d '{"application_ids": [-1, -2, -3]}'   # 404/422 -> 4xx, error rate не тронет (только 5xx)
+```
+
+---
+
+## Git-процесс
+
+История: 1 корневой коммит + 6 рабочих (milestone, фиксы, доки) — всё на
+`main`, дерево чистое, публиковать можно сразу.
+
+### Стандартный цикл
+
+```bash
+git status                 # что изменилось (M/??/D)
+git diff                   # посмотреть правки (--stat — сводка)
+git diff --cached          # что уже в индексе
+
+# до коммита — обязательно:
+.venv\Scripts\python.exe -m pytest tests -q     # 27 passed / 3 skipped
+.venv\Scripts\python.exe -m ruff check .        # чисто
+
+git add -A
+git commit -m "Короткий заголовок (что сделано)
+
+Тело: зачем, что менялось, как проверено (1-5 строк)."
+git push origin main
+```
+
+Конвенция коммитов в этом репо: заголовок — глагол + суть
+(«Fix monitoring on empty production months»), тело — контекст и
+результаты проверки (E2E-цифры и т.п.).
+
+### Что НЕ коммитится (.gitignore)
+
+`.env` (креды), `.venv/`, `mlruns/`, `mlartifacts/`, `data/raw|processed|batches`,
+`notebooks/`, `scripts/playground/`, `*_out.txt` (логи команд), личные
+`cv.txt / project.txt / vacantion.txt`. Проверка:
+`git status --short --ignored | head`.
+
+### CI (после push)
+
+`.github/workflows/ci.yml`:
+1. **lint** — ruff по всему репо;
+2. **unit-tests** — pytest (DB-интеграционные скипаются без POSTGRES_HOST);
+3. **docker-build** — сборка образа из корневого Dockerfile;
+4. **e2e** — вручную (`workflow_dispatch`): полный bootstrap
+   `docker compose up --build` + smoke API.
+
+### После изменения кода — что пересобрать
+
+| Что поменял | Действие |
+|---|---|
+| `credit_decision/**` (код) | `docker compose build <сервис>` + `up -d --force-recreate <сервис>` |
+| `dags/` | `docker compose --profile full build airflow-init` + recreate scheduler/webserver |
+| `docker-compose.yml` | `up -d --force-recreate` (изменился конфиг) |
+| `docs/`, `tests/` | ничего не пересобирать |
+
+### Откат / история
+
+```bash
+git log --oneline -10        # история
+git show <sha> --stat        # что в коммите
+git revert <sha>             # безопасный откат (новый коммит)
+git reset --hard <sha>       # жёсткий откат (осторожно: удалит правки)
+```
+
+### Как работать над фичей
+
+```bash
+git checkout -b feature/slo-alerts
+# ...правки, тесты, ruff...
+git commit -m "..."
+git checkout main && git merge feature/slo-alerts
+```
+
+Релиз: когда захочешь зафиксировать состояние — `git tag v0.1.0 && git push --tags`.
+
+---
+
 ## Полезные файлы
 
 - `docker-compose.yml` — вся инфраструктура (сервисы, профили, тома)
