@@ -842,7 +842,7 @@
             "type": "prometheus",
             "uid": "voltprom"
           },
-          "expr": "clamp_max(sum(up{job=\"api\"}) / 1, 1)",
+          "expr": "avg_over_time(up{job=\"api\"}[24h])",
           "legendFormat": "up",
           "refId": "A",
           "intervalMs": 1000,
