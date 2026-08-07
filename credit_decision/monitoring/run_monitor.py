@@ -140,7 +140,15 @@ def run_monitor(months: int = 7, simulate: bool = False, month: str | None = Non
 
             quality_report = Report(metrics=[DataSummaryPreset()])
             quality_snapshot = quality_report.run(reference_data=reference, current_data=current)
-            _store_event(batch, "data_quality", False, {})
+            # data-quality summary: row count + missing shares per key column
+            # (drives the Grafana "data quality" panel; outage months stand out)
+            _cols = ("income", "amount", "age", "employment_status", "purpose",
+                     "credit_history_months", "num_open_loans")
+            quality_metrics: dict = {"n_rows": int(len(current))}
+            for _c in _cols:
+                if _c in current.columns:
+                    quality_metrics[f"missing_{_c}"] = float(current[_c].isna().mean())
+            _store_event(batch, "data_quality", False, quality_metrics)
             q_html = REPORT_DIR / f"quality_{batch}.html"
             quality_snapshot.save_html(str(q_html))
             mlflow.log_artifact(str(q_html))

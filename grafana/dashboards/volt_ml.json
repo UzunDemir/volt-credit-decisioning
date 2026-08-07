@@ -658,6 +658,304 @@
         }
       ],
       "options": {}
+    },
+    {
+      "id": 16,
+      "type": "table",
+      "title": "Data quality by month (rows, missing shares)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 59
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "voltdb"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "voltdb"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT DISTINCT ON (batch_name) batch_name AS metric, (metrics->>'n_rows')::int AS n_rows, round((metrics->>'missing_income')::numeric, 3) AS missing_income, round((metrics->>'missing_employment_status')::numeric, 3) AS missing_employment FROM monitoring_events WHERE report_type = 'data_quality' ORDER BY batch_name, event_id DESC",
+          "refId": "A"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "API requests per second",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 67
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "voltprom"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "voltprom"
+          },
+          "expr": "sum(rate(http_requests_total{job=\"api\"}[5m]))",
+          "legendFormat": "rps",
+          "refId": "A",
+          "intervalMs": 1000,
+          "maxDataPoints": 100
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "API latency p50 / p95",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 67
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "voltprom"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "voltprom"
+          },
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job=\"api\"}[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A",
+          "intervalMs": 1000,
+          "maxDataPoints": 100
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "voltprom"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"api\"}[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B",
+          "intervalMs": 1000,
+          "maxDataPoints": 100
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "API error rate (5xx)",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 67
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "voltprom"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "voltprom"
+          },
+          "expr": "(sum(rate(http_requests_total{job=\"api\",status=~\"5..\"}[5m])) or on() vector(0)) / clamp_min(sum(rate(http_requests_total{job=\"api\"}[5m])), 1e-9)",
+          "legendFormat": "error_rate",
+          "refId": "A",
+          "intervalMs": 1000,
+          "maxDataPoints": 100
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "stat",
+      "title": "Uptime (last 24h)",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 67
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "voltprom"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "voltprom"
+          },
+          "expr": "clamp_max(sum(up{job=\"api\"}) / 1, 1)",
+          "legendFormat": "up",
+          "refId": "A",
+          "intervalMs": 1000,
+          "maxDataPoints": 100
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.9
+              },
+              {
+                "color": "green",
+                "value": 0.99
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "stat",
+      "title": "Shadow scoring (champion vs candidate)",
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 0,
+        "y": 75
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "voltdb"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "voltdb"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) FILTER (WHERE challenger_score IS NOT NULL) AS shadowed, round(avg(abs(score - challenger_score)) FILTER (WHERE challenger_score IS NOT NULL), 4) AS mean_abs_diff FROM decisions",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "table",
+      "title": "Recent shadow decisions (champion vs candidate)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 75
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "voltdb"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "voltdb"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT application_id, model_version, score, challenger_score, decision, decided_at FROM decisions WHERE challenger_score IS NOT NULL ORDER BY decision_id DESC LIMIT 10",
+          "refId": "A"
+        }
+      ],
+      "options": {}
     }
   ],
   "refresh": "30s",
@@ -678,6 +976,6 @@
   "timezone": "browser",
   "title": "Volt ML Operations",
   "uid": "volt-ml-ops",
-  "version": 4,
+  "version": 9,
   "weekStart": ""
 }

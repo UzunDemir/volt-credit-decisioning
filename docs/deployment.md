@@ -14,7 +14,7 @@ docker compose up --build
 #   MLflow:    http://localhost:5000
 
 # simulate production months + drift reports:
-docker compose run --rm monitor --simulate
+docker compose run --rm monitor python -m credit_decision.monitoring.run_monitor --simulate
 ```
 
 ## 1. Render (free)

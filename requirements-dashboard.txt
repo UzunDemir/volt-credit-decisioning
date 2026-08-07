@@ -1,0 +1,5 @@
+# Standalone Streamlit demo (streamlit_app.py) - no database, no API.
+streamlit>=1.36
+pandas>=2.0
+numpy>=1.24,<2.0
+plotly>=5.20

@@ -13,7 +13,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-volt}
       POSTGRES_DB: ${POSTGRES_DB:-volt_credit}
     ports:
-      - "5432:5432"
+      # host-side publish on 5433: a local Windows PostgreSQL service may
+      # occupy 5432; containers still reach the DB as `postgres:5432`
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./sql:/docker-entrypoint-initdb.d:ro
@@ -169,6 +171,20 @@ services:
     depends_on:
       airflow-init:
         condition: service_completed_successfully
+    restart: unless-stopped
+
+  prometheus:
+    # API SLO metrics (RPS, latency, error rate) scraped from /metrics.
+    # Started only with: docker compose --profile full up -d
+    image: prom/prometheus:latest
+    profiles: ["full"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      api:
+        condition: service_started
     restart: unless-stopped
 
   grafana:

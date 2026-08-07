@@ -25,8 +25,9 @@
    ┌─────────────────────────────────────────────┐
    │  Airflow (profile full)                     │
    │  daily_monitoring · weekly_retrain ·        │   Streamlit dashboard
-   │  monthly_forecast  (BashOperator over      │── business views
-   │  python -m credit_decision.*)               │
+   │  monthly_forecast · drift_retrain           │── business views
+   │  (BashOperator over python -m               │
+   │  credit_decision.*)                         │
    └─────────────────────────────────────────────┘
 ```
 
@@ -41,6 +42,7 @@
 | `api` | this repo | uvicorn FastAPI; features from SQL view -> model -> decision; alert webhook target (`/v1/alerts`) |
 | `dashboard` | this repo | Streamlit business dashboard |
 | `monitor` | this repo | simulate prod batches; Evidently drift/quality reports |
+| `prometheus` | prom/prometheus:latest | API SLO metrics (RPS, latency, error rate) from `/metrics` (profile `full`) |
 | `grafana` | grafana/grafana-oss:13.0.2 | operational dashboards + alert rule (profile `full`) |
 | `grafana-alerts` | this repo | one-shot provisioning: folder + rule + contact point + policy |
 | `airflow-init` | volt-airflow | one-shot: create `volt_airflow` DB, migrate, admin user |
@@ -75,9 +77,11 @@
    on the API → row in `alert_events` (closed loop, versioned in the repo).
 7. **Airflow** schedules the jobs: `daily_monitoring` (Evidently on the
    latest batch), `weekly_retrain` (train + registry promotion),
-   `monthly_forecast` (Holt-Winters portfolio forecast). DAGs are thin
-   `BashOperator` wrappers over `python -m credit_decision.*` — scheduling
-   is configuration, no duplicated ML logic.
+   `monthly_forecast` (Holt-Winters portfolio forecast), `drift_retrain`
+   (daily drift probe: at ≥30% it registers a CANDIDATE, the `production`
+   alias untouched). DAGs are thin `BashOperator` wrappers over
+   `python -m credit_decision.*` — scheduling is configuration, no
+   duplicated ML logic.
 8. **Dashboard** reads `decisions` + `monitoring_events` + `/model-info`:
    approval rate, score mix, drift by month, live scoring demo.
 

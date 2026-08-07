@@ -36,7 +36,12 @@ def run(months: int = 7, n: int = 5_000, reset_production: bool = True) -> None:
         execute("DELETE FROM applications  WHERE client_id >= :lo", {"lo": BATCH_ID_SPACING})
         execute("DELETE FROM clients       WHERE client_id >= :lo", {"lo": BATCH_ID_SPACING})
     for i in range(months):
-        scenario = "steady" if i < 3 else "downturn"
+        if i == 4:
+            scenario = "outage"   # 2026-05: acquirer data-quality shock
+        elif i < 3:
+            scenario = "steady"
+        else:
+            scenario = "downturn"
         dfs = generate.generate_production_batch(
             seed=s.data_seed, month_index=i, scenario=scenario,
             n=n,

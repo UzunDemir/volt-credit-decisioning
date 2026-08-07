@@ -14,11 +14,17 @@ Airflow UI: http://localhost:8080  (admin / volt)
 |-----|----------|---------|---------|
 | `daily_monitoring` | daily 07:00 | `python -m credit_decision.monitoring.run_monitor --month 2026-07` | Evidently drift + quality report on the latest production batch |
 | `weekly_retrain` | Monday 03:00 | `python -m credit_decision.model.train` | Retrain champion, register to MLflow, update `production` alias |
+| `drift_retrain` | daily 07:30 | check drift >= 30% -> `python -m credit_decision.model.train --candidate` | Drift-triggered retraining: registers a CANDIDATE, production alias untouched (champion-challenger) |
 | `monthly_forecast` | 1st of month 04:00 | `python -m credit_decision.model.forecast` | Portfolio default-rate forecast (Holt-Winters), artifacts to MLflow |
 
 DAG code lives in `dags/` and invokes the same modules the one-shot compose
 services use - `python -m credit_decision.*` with the project on `PYTHONPATH`.
 Scheduling *is* configuration: no new ML logic inside Airflow.
+
+`drift_retrain` demonstrates the champion-challenger loop: the DAG probes
+the latest drift share and, when the threshold fires, trains a candidate
+(`--candidate` - no alias promotion). The API then shadow-scores it
+(`decisions.challenger_score`) until labels arrive for offline comparison.
 
 In production the monitoring batch would be derived from the ETL schedule
 (previous calendar month); the demo window is pinned to `2026-07` with a

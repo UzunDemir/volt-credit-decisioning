@@ -13,7 +13,11 @@ Methodology (the parts that matter for a Senior DS interview):
      `production` alias; threshold + metrics stored as model tags.
 
 Usage:
-    python -m credit_decision.model.train
+    python -m credit_decision.model.train [--candidate]
+
+    --candidate: train and REGISTER a candidate version, but do NOT promote
+    the `production` alias (champion-challenger workflow: candidates are
+    evaluated offline/shadow before promotion).
 """
 
 from __future__ import annotations
@@ -81,7 +85,7 @@ def build_models() -> dict[str, Pipeline]:
     }
 
 
-def main() -> None:
+def main(candidate: bool = False) -> None:
     s = get_settings()
     t0 = time.time()
 
@@ -98,7 +102,7 @@ def main() -> None:
     X_val, y_val = pl.split_features_target(val)
     X_test, y_test = pl.split_features_target(test)
 
-    run_name = f"champion_{datetime.now():%Y%m%d_%H%M%S}"
+    run_name = f"{'candidate' if candidate else 'champion'}_{datetime.now():%Y%m%d_%H%M%S}"
     with mlflow.start_run(run_name=run_name) as run:
         mlflow.log_params({
             "n_train": len(train), "n_val": len(val), "n_test": len(test),
@@ -189,11 +193,22 @@ def main() -> None:
         client.set_model_version_tag(MODEL_NAME, mv.version, "champion", champion)
         client.set_model_version_tag(MODEL_NAME, mv.version, "run_id", run.info.run_id)
         # aliases are the modern registry mechanism (stages were removed in MLflow 3.x)
-        client.set_registered_model_alias(MODEL_NAME, "production", mv.version)
-        print(f"  registered {MODEL_NAME} v{mv.version} -> alias 'production'")
+        if candidate:
+            client.set_registered_model_alias(MODEL_NAME, "candidate", mv.version)
+            client.set_model_version_tag(MODEL_NAME, mv.version, "candidate", "true")
+            print(f"  registered {MODEL_NAME} v{mv.version} -> alias 'candidate' (NOT promoted)")
+        else:
+            client.set_registered_model_alias(MODEL_NAME, "production", mv.version)
+            print(f"  registered {MODEL_NAME} v{mv.version} -> alias 'production'")
 
     print(f"Training finished in {time.time() - t0:.1f}s")
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--candidate", action="store_true",
+                    help="register as candidate (do not promote production alias)")
+    args = ap.parse_args()
+    main(candidate=args.candidate)

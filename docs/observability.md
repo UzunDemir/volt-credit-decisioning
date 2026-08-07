@@ -36,7 +36,7 @@ Rule **"Drift share above 30%"** — created by `scripts/grafana_alerts.py`
 SELECT metrics->>'share_drifted'::float
 FROM monitoring_events
 WHERE report_type = 'data_drift'
-ORDER BY batch_name DESC LIMIT 1
+ORDER BY event_id DESC LIMIT 1
 ```
 
 Evaluated every minute; fires when the latest batch's drifted-column share
@@ -53,15 +53,19 @@ policies → route `severity=warning` to it.
 ```
 grafana/
   provisioning/
-    datasources/postgres.yaml   # VoltPostgres -> volt_credit
-    dashboards/dashboards.yaml  # file provider
-  dashboards/volt_ml.json       # dashboard definition
-scripts/grafana_alerts.py       # folder + drift alert rule (API provisioning)
+    datasources/postgres.yaml    # VoltPostgres -> volt_credit
+    datasources/prometheus.yaml  # VoltPrometheus -> API SLO metrics
+    dashboards/dashboards.yaml   # file provider
+  dashboards/volt_ml.json        # dashboard definition
+prometheus/prometheus.yml        # scrape api:8000/metrics
+scripts/grafana_alerts.py        # folder + drift alert rule (API provisioning)
 ```
 
-## Why no Prometheus (yet)
+## API SLOs (Prometheus)
 
-The current story is *business/ML observability*: drift, approvals, score
-mix — all in PostgreSQL already. Prometheus would add API SLOs (latency,
-error rate) but also a second telemetry system; it is the documented next
-step if we want request-level SLAs.
+The API exposes request metrics (`/metrics`, prometheus-fastapi-instrumentator:
+RPS, latency histogram, error rate). Prometheus scrapes them every 15s
+(`prometheus/prometheus.yml`, job `api`), and the VoltPrometheus datasource
+(`grafana/provisioning/datasources/prometheus.yaml`) is provisioned for
+Grafana. The natural next step is SLO alert rules on error rate / latency —
+routed through the same webhook loop as the drift rule.

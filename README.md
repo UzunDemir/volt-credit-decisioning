@@ -24,7 +24,7 @@ docker compose up --build
 | API (OpenAPI docs) | http://localhost:8000/docs |
 | Business dashboard | http://localhost:8501 |
 | MLflow (runs + registry) | http://localhost:5000 |
-| PostgreSQL | localhost:5432 (volt/volt/volt_credit) |
+| PostgreSQL | localhost:5433 (volt/volt/volt_credit) |
 
 Full observability + orchestration profile:
 
@@ -35,7 +35,7 @@ docker compose --profile full up -d
 | What | Where | Credentials |
 |---|---|---|
 | Grafana (drift/approval dashboards + alerts) | http://localhost:3000 | admin / volt |
-| Airflow (3 DAGs: `daily_monitoring`, `weekly_retrain`, `monthly_forecast`) | http://localhost:8080 | admin / volt |
+| Airflow (4 DAGs: `daily_monitoring`, `drift_retrain`, `weekly_retrain`, `monthly_forecast`) | http://localhost:8080 | admin / volt |
 
 Simulate production months and generate drift reports:
 
@@ -74,8 +74,9 @@ curl -X POST http://localhost:8000/v1/score -H "Content-Type: application/json" 
   over PostgreSQL, **alert rule → webhook → API → `alert_events`** closed
   loop (drift ≥ 30% fires a real notification).
 - **Orchestration**: Airflow 2.10 (LocalExecutor, dedicated `volt_airflow`
-  metastore) schedules monitoring, retraining and forecasting; DAGs call the
-  same `python -m credit_decision.*` modules the one-shot jobs use.
+  metastore) schedules monitoring, retraining (drift-triggered candidate via
+  `drift_retrain`) and forecasting; DAGs call the same
+  `python -m credit_decision.*` modules the one-shot jobs use.
 - **Experimentation**: A/B test sizing (`experiments/ab_test.py`), uplift
   modelling (`experiments/uplift.py`), rollout plan (`docs/ab_test.md`).
 - **Forecasting**: Holt-Winters portfolio default-rate forecast

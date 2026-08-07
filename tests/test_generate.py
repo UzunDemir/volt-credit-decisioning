@@ -68,3 +68,49 @@ def test_transaction_times_precede_application():
     app_ts = dfs["applications"].set_index("client_id")["applied_at"]
     tx = dfs["transactions"].head(5_000)
     assert (tx["txn_ts"] < tx["client_id"].map(app_ts)).all()
+
+def test_compute_labels_windows_use_own_application_date():
+    """Regression: label windows must use the client's OWN applied_at.
+
+    The old position-based reindex (_client_idx, 0-based) shifted every
+    client onto its neighbour's application date and dropped client 1 —
+    spenders right before THEIR application defaulted no more often than
+    identical clients with no recent spend.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from credit_decision.etl.generate import compute_labels
+
+    n_pairs = 1_000
+    rng = np.random.default_rng(0)
+    n = 2 * n_pairs
+    u = np.full(n, 0.30)  # same hidden risk for everyone
+
+    spender_applied = pd.Timestamp("2025-01-10")
+    quiet_applied = pd.Timestamp("2025-06-10")
+    applied_at = np.where(
+        np.arange(n) % 2 == 0, spender_applied, quiet_applied
+    ).astype("datetime64[ns]")
+
+    clients = pd.DataFrame({"client_id": np.arange(1, n + 1), "u": u})
+    applications = pd.DataFrame({
+        "client_id": np.arange(1, n + 1),
+        "applied_at": applied_at,
+        "income": 5000.0,
+    })
+    # each spender has one 10k$ outflow 5 days before ITS OWN application;
+    # quiet clients have no transactions at all
+    tx = pd.DataFrame({
+        "client_id": np.arange(1, n + 1, 2),
+        "txn_ts": spender_applied - pd.Timedelta(days=5),
+        "amount": 10000.0,
+        "_is_in": False,
+        "_is_night": False,
+        "_client_idx": np.arange(0, n, 2),
+    })
+
+    labeled = compute_labels(clients, applications, tx, rng)
+    dr_spender = labeled[labeled["client_id"] % 2 == 1]["has_default_12m"].mean()
+    dr_quiet = labeled[labeled["client_id"] % 2 == 0]["has_default_12m"].mean()
+    assert dr_spender > dr_quiet + 0.05, (dr_spender, dr_quiet)

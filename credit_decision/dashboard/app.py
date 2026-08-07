@@ -12,6 +12,7 @@ Run: streamlit run credit_decision/dashboard/app.py
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -26,6 +27,15 @@ import streamlit as st
 
 from credit_decision.config import get_settings
 from credit_decision.db import read_sql
+
+# Streamlit Cloud delivers secrets via st.secrets, not env vars; bridge them
+# so the pydantic Settings (env-driven) pick them up unchanged.
+try:
+    for _key, _val in st.secrets.items():
+        if _key not in os.environ:
+            os.environ[_key] = str(_val)
+except Exception:  # noqa: BLE001 - local runs have no secrets; env vars already set
+    pass
 
 LOGO_PATH = Path(__file__).resolve().parent / "assets" / "volt_logo.png"
 

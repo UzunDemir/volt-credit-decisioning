@@ -56,10 +56,21 @@ CREATE TABLE IF NOT EXISTS decisions (
     model_version  VARCHAR(64) NOT NULL,
     score          NUMERIC(8,6) NOT NULL,
     decision       VARCHAR(8) NOT NULL CHECK (decision IN ('approve','decline')),
+    challenger_score NUMERIC(8,6),  -- shadow candidate probability (champion-challenger)
     decided_at     TIMESTAMP NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS ix_decisions_decided_at ON decisions (decided_at);
+
+-- Alert webhook audit trail (written by the serving API POST /v1/alerts)
+CREATE TABLE IF NOT EXISTS alert_events (
+    event_id    BIGSERIAL PRIMARY KEY,
+    title       TEXT NOT NULL,
+    message     TEXT,
+    state       TEXT,
+    labels      JSONB,
+    received_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- Monitoring summary (written by the drift/quality job)
 CREATE TABLE IF NOT EXISTS monitoring_events (

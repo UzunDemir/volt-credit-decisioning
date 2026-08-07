@@ -75,6 +75,10 @@ economy turns, and the alert for drift actually calls home."
   from the ETL schedule; the demo window is pinned to 2026-07).
 - `weekly_retrain`: retrain + registry promotion; "in prod I'd make it
   drift-triggered".
+- `drift_retrain`: every day 07:30 — probes the latest drift share; at
+  ≥30% it registers a CANDIDATE (champion-challenger: the `production`
+  alias untouched, the API shadow-scores the candidate for offline
+  comparison).
 - `monthly_forecast`: portfolio default-rate forecast for finance.
 - "DAGs are thin wrappers over the same `python -m credit_decision.*`
   modules — scheduling is configuration, not a second codebase."

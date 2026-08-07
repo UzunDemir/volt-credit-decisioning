@@ -72,6 +72,14 @@ DEFAULT_SCENARIOS: dict[str, dict[str, float]] = {
         "cash_weight_scale": 1.8,
         "n_txns_scale": 0.9,
     },
+    # data-quality shock: as if an acquirer outage corrupted a month
+    # (missing incomes, outlier txn amounts, duplicated rows)
+    "outage": {
+        "missing_income_share": 0.30,
+        "outlier_share": 0.005,
+        "outlier_scale": 60.0,
+        "duplicate_share": 0.03,
+    },
 }
 
 
@@ -116,6 +124,10 @@ def _generate_core(
     loans_scale = adj.get("loans_scale", 1.0)
     cash_weight_scale = adj.get("cash_weight_scale", 1.0)
     n_txns_scale = adj.get("n_txns_scale", 1.0)
+    missing_income_share = adj.get("missing_income_share", 0.0)
+    outlier_share = adj.get("outlier_share", 0.0)
+    outlier_scale = adj.get("outlier_scale", 1.0)
+    duplicate_share = adj.get("duplicate_share", 0.0)
 
     # ---------------- clients -------------------------------------------
     u = rng.uniform(0.0, 1.0, n)  # hidden risk factor
@@ -134,6 +146,8 @@ def _generate_core(
     # employment modulates income
     income = income * np.where(emp_idx == 2, 0.55, np.where(emp_idx == 4, 0.75, 1.0))
     income_missing = rng.random(n) < 0.07
+    if missing_income_share > 0.0:
+        income_missing = income_missing | (rng.random(n) < missing_income_share)
     income = np.where(income_missing, np.nan, income)
 
     credit_history_months = np.clip(rng.poisson(55.0 * (1.3 - 0.6 * u), n), 0, 420).astype(int)
@@ -205,7 +219,9 @@ def _generate_core(
 
     night_p = np.clip(0.08 + 0.22 * cu + night_add, 0.0, 0.6)
     is_night = rng.random(total) < night_p
-    hour = np.where(is_night, rng.integers(23, 24, total) + rng.choice([0, 0, 0, 1, 2, 3, 4, 5], total),
+    # night hours are 23:00 or 00:00-05:00 (hour must stay in 0..23)
+    hour = np.where(is_night,
+                    rng.choice(np.array([23, 0, 0, 1, 2, 3, 4, 5]), total),
                     rng.integers(6, 23, total)).astype(int)
 
     p_in = np.clip(0.10 - 0.06 * cu, 0.01, 0.5)
@@ -216,6 +232,10 @@ def _generate_core(
                             monthly_income[client_idx] * np.exp(rng.normal(0.0, 0.25, total)),
                             (monthly_income[client_idx] / 30.0) * out_scale * np.exp(rng.normal(0.0, 0.45, total)))
     txn_amount = np.round(np.clip(amount_scale, 0.5, 200000.0), 2)
+    if outlier_share > 0.0:
+        outlier_mask = rng.random(total) < outlier_share
+        txn_amount = np.where(outlier_mask, txn_amount * outlier_scale, txn_amount)
+        txn_amount = np.round(np.clip(txn_amount, 0.5, 500000.0), 2)
 
     # category: cash gets heavier in a downturn
     out_w = _OUT_WEIGHTS.copy()
@@ -270,6 +290,15 @@ def _generate_core(
         "_client_idx": client_idx,
     })
 
+    if duplicate_share > 0.0:
+        # acquirer outage: the same payments appear twice (new txn_ids,
+        # identical content) - a classic ingestion duplicate
+        n_dup = int(len(transactions) * duplicate_share)
+        dup = transactions.sample(n=n_dup, random_state=int(rng.integers(0, 2**31))).copy()
+        start_id = int(transactions["txn_id"].max()) + 1
+        dup["txn_id"] = np.arange(start_id, start_id + n_dup)
+        transactions = pd.concat([transactions, dup], ignore_index=True)
+
     return {"clients": clients, "applications": applications, "transactions": transactions}
 
 
@@ -287,9 +316,12 @@ def compute_labels(
     pre-application transactions are used.
     """
     tx = transactions
-    # per-client offsets: recompute from client's own applied_at
+    # per-client offsets: recompute from the client's OWN applied_at.
+    # NOTE: reindex by the 1-based client_id, NOT the 0-based _client_idx
+    # position — the old position-based lookup shifted every client's
+    # window onto its neighbour's application date (and dropped client 1).
     app_by_client = applications.set_index("client_id")["applied_at"]
-    tx_days = (app_by_client.reindex(tx["_client_idx"].values).values - tx["txn_ts"].values)
+    tx_days = (app_by_client.reindex(tx["client_id"].values).values - tx["txn_ts"].values)
     tx_days = tx_days.astype("timedelta64[D]").astype(int)
 
     out30 = tx["_is_in"].eq(False) & (tx_days <= 30)

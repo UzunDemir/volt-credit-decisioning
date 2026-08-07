@@ -29,6 +29,10 @@ Thumbs.db
 # Docs source
 notes/
 
+# Scratch notebooks & one-off debug scripts
+notebooks/
+scripts/playground/
+
 # Local command output
 smoke_out.txt
 tests_out.txt
